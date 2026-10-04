@@ -338,12 +338,12 @@ export class QedProof {
 
   async verify(
     receipt: unknown | string,
-    options: { keys?: Keyset; rpcUrl?: string; consistency?: VerifyOptions["consistency"]; head?: unknown } = {},
+    options: { keys?: Keyset; rpcUrl?: string; consistency?: VerifyOptions["consistency"]; head?: unknown; nitroRoot?: VerifyOptions["nitroRoot"] } = {},
   ): Promise<VerifyReport> {
     const keys = options.keys ?? (await this.getKeys());
     // This client knows its issuer: an anchor at a different tree size is proven with that issuer's consistency proof.
     return verifyReceipt(receipt, {
-      keys, rpcUrl: options.rpcUrl, consistency: options.consistency, head: options.head, issuer: this.baseUrl, fetch: this.fetchImpl,
+      keys, rpcUrl: options.rpcUrl, consistency: options.consistency, head: options.head, nitroRoot: options.nitroRoot, issuer: this.baseUrl, fetch: this.fetchImpl,
     });
   }
 }

@@ -56,4 +56,23 @@ describe("qed verify", () => {
     );
     expect(code).toBe(1);
   });
+
+  it("prints an attestation line: not applicable below level 3, the result at level 3 (vectors 001, 042, 044)", async () => {
+    const plain = captureIo();
+    await verify({ file: join(vectorsDir, "001-valid-verified.json"), keys: join(vectorsDir, "keys.json") }, plain.io);
+    expect(plain.lines).toContain("attestation: not applicable");
+
+    const keys = join(vectorsDir, "keys-l3.json");
+    const nitroRoot = join(vectorsDir, "nitro-test-root.pem");
+    const ok = captureIo();
+    expect(await verify({ file: join(vectorsDir, "042-l3-valid.json"), keys, nitroRoot }, ok.io)).toBe(0);
+    expect(ok.lines).toContain("attestation: true");
+    const bad = captureIo();
+    expect(await verify({ file: join(vectorsDir, "044-l3-tampered-payload.json"), keys, nitroRoot }, bad.io)).toBe(0);
+    expect(bad.lines).toContain("attestation: attestation_invalid");
+    // without the test root, the real AWS root is trusted and the test chain does not reach it
+    const real = captureIo();
+    await verify({ file: join(vectorsDir, "042-l3-valid.json"), keys }, real.io);
+    expect(real.lines).toContain("attestation: attestation_chain");
+  });
 });

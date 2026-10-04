@@ -36,6 +36,8 @@ export interface Keyset {
   keys?: Array<{ key_id: string; public_key: string; valid_from: string; revoked_at: string | null }>;
   anchor_addresses?: string[];
   anchor_schemas?: string[];
+  /** Published enclave builds (SPEC §5.2): the attested PCR0 must equal one of their `code_hash` values at trust level 3. */
+  verifier_builds?: Array<{ code_hash: string; [key: string]: unknown }>;
 }
 
 export interface AnchorResult {

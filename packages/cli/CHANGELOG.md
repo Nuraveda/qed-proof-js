@@ -6,6 +6,13 @@ All notable changes to `@qed-proof/cli` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-04
+
+### Added
+
+- `qed verify` prints an `attestation:` line (`true`, the reason it failed, or `not applicable` below trust level 3) and
+  accepts `--nitro-root <file>` (a PEM or DER certificate to trust instead of the AWS Nitro root; for tests only).
+
 ## [0.3.0] - 2026-10-04
 
 Adds commands for the free public Merkle log.
@@ -78,6 +85,7 @@ The first published version. 0.1.0 was tagged on the public repo but never publi
   and exiting 1 when the receipt is not valid.
 
 [Unreleased]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...HEAD
+[0.4.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...sdk-js-v0.4.0
 [0.3.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.2.0...sdk-js-v0.3.0
 [0.2.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.1.6...sdk-js-v0.2.0
 [0.1.6]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.1.5...sdk-js-v0.1.6

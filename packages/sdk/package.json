@@ -1,6 +1,6 @@
 {
   "name": "@qed-proof/sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "TypeScript SDK for QED Proof: submit claims, poll verdicts, and verify PoAW receipts offline. Runs on Node, Deno and browsers.",
   "license": "Apache-2.0",
   "type": "module",

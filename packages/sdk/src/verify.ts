@@ -20,6 +20,7 @@ import {
 } from "./primitives.js";
 import { changeSchemaValid, pipelineSchemaValid, schemaValid } from "./schema.js";
 import { checkAnchor, type Keyset, type Proof } from "./anchor.js";
+import { AttestationError, verifyEnclaveReceipt, type VerifierBuild } from "./nitro.js";
 import { checkHead, consistencySource, type ConsistencyDoc } from "./log.js";
 
 export interface VerifyChecks {
@@ -36,6 +37,12 @@ export interface VerifyChecks {
   policy?: boolean | "not_checked";
   /** Present only when a signed tree head was supplied (§8.5): true, or why the receipt's tree isn't proven part of it. */
   head?: boolean | string;
+  /**
+   * Present only when the body claims trust_level >= 3 (§7.1, §10 step 5): true, or the reason the AWS Nitro attestation
+   * does not verify (`attestation_invalid`, `attestation_chain`, `pcr_mismatch`, `statement_mismatch`, `unknown_build`).
+   * A failure never invalidates the receipt; it only keeps `achieved_trust_level` below 3.
+   */
+  attestation?: boolean | string;
 }
 
 export interface VerifyReport {
@@ -64,6 +71,11 @@ export interface VerifyOptions {
   head?: unknown;
   /** The fetch used for `issuer` requests. Defaults to the global one. */
   fetch?: typeof fetch;
+  /**
+   * TESTS ONLY: trust this X.509 certificate (PEM text or DER bytes) as the attestation root instead of the pinned AWS Nitro
+   * root. Mirrors `--nitro-root` of the reference checker. Never set it when verifying real receipts.
+   */
+  nitroRoot?: string | Uint8Array;
 }
 
 /** SPEC §15.2: the document is valid, its id and version are the policy's, and its digest is the policy's. */
@@ -191,6 +203,19 @@ export async function verifyReceipt(receipt: unknown | string, options: VerifyOp
     checks.head = await checkHead(options.head, proof, keyset, getConsistency);
   }
 
+  // §7.1 / §10 step 5: at trust_level >= 3 the attestation is checked in full. A failure never invalidates the receipt (it is
+  // still a signed L1/L2 receipt); it only caps the achieved level, and `attestation` carries the reason.
+  const trustLevel = (body as Record<string, unknown>).trust_level;
+  if (!isChange && checks.schema && typeof trustLevel === "number" && Number.isInteger(trustLevel) && trustLevel >= 3) {
+    try {
+      const builds = (keyset as { verifier_builds?: VerifierBuild[] }).verifier_builds;
+      verifyEnclaveReceipt(parsed, builds, { nitroRoot: options.nitroRoot });
+      checks.attestation = true;
+    } catch (e) {
+      checks.attestation = e instanceof AttestationError ? e.reason : "attestation_invalid"; // unforeseen is unproven, never a pass
+    }
+  }
+
   // §15.2: only present when the body carries a policy. Without the pipeline document it is "not_checked".
   const policy = (body as Record<string, unknown>).policy;
   if (policy !== undefined && policy !== null) {
@@ -209,6 +234,8 @@ export async function verifyReceipt(receipt: unknown | string, options: VerifyOp
     (checks.head === undefined || checks.head === true);
 
   const achievedTrustLevel = valid ? (checks.inclusion === true && checks.anchor === true ? 2 : 1) : 0;
+  // §7.1: levels are cumulative, so level 3 needs level 2 (inclusion + a verified anchor) and every attestation rule.
+  const cumulative = valid && achievedTrustLevel === 2 && checks.attestation === true ? 3 : achievedTrustLevel;
   const verdictValue = (body as Record<string, unknown>).verdict as { value?: string } | undefined;
   const verdict = valid && !isChange ? (verdictValue?.value ?? null) : null;
 
@@ -216,7 +243,7 @@ export async function verifyReceipt(receipt: unknown | string, options: VerifyOp
     checks,
     valid,
     verdict: verdict ?? null,
-    achieved_trust_level: achievedTrustLevel,
+    achieved_trust_level: cumulative,
   };
   if (isChange) {
     report.entry_kind = "change";

@@ -78,6 +78,10 @@ primitives in `oss/core-python/src/poaw_core`: RFC 8785 JCS, Ed25519 signatures,
 and the EAS anchor check over JSON-RPC with a small hand-written ABI decoder. It reproduces every
 one of the 20 conformance vectors in `../../test/vectors/manifest.json` exactly.
 
+At `trust_level` 3 it also verifies the receipt's AWS Nitro Enclaves attestation (`checks.attestation`): the COSE_Sign1
+document, its certificate chain to the pinned AWS Nitro root, PCR0 = the receipt's `code_hash`, `user_data` = the statement
+digest, and a build the issuer publishes in `verifier_builds`. Level 3 is reported as achieved only on top of level 2.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

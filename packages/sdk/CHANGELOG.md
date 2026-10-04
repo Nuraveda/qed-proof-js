@@ -6,6 +6,27 @@ All notable changes to `@qed-proof/sdk` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-04
+
+Adds trust level 3: verifying the AWS Nitro Enclaves attestation of a receipt (SPEC §7.1, §10 step 5).
+
+### Added
+
+- `verifyReceipt` checks the attestation when the body claims `trust_level` >= 3 and reports it as `checks.attestation` (`true`
+  or the reason: `attestation_invalid`, `attestation_chain`, `pcr_mismatch`, `statement_mismatch`, `unknown_build`). Levels are
+  cumulative: `achieved_trust_level` is 3 only when level 2 (inclusion + verified anchor) holds and the attestation verifies. A
+  failed attestation never invalidates the receipt; it only keeps the achieved level lower. The issuer's `verifier_builds`
+  (from its keyset) say which enclave builds are published.
+- `verifyNitroAttestation`, `verifyEnclaveReceipt`, `attestationDocumentSha256`, `enclaveStatement`, `enclaveStatementDigest` and
+  `AttestationError` are exported. The AWS Nitro root is pinned (SHA-256 `641a0321...bb5b`) and checked when the module loads.
+- `verifyReceipt(..., { nitroRoot })` replaces the pinned root with another certificate. For tests only.
+
+### Notes
+
+- No new dependency: the CBOR and X.509 reading is a small strict implementation in the package (no `eval`, strict-CSP safe),
+  and ECDSA P-384 uses `@noble/curves`, which the SDK already depends on. It does not need WebCrypto, so it also runs on Node 18.
+  Only `ecdsa-with-SHA384` over P-384 certificates are accepted, as the AWS Nitro PKI uses.
+
 ## [0.3.0] - 2026-10-04
 
 Adds the free public Merkle log: read the log and check signed tree heads and consistency proofs.
@@ -91,6 +112,7 @@ The first published version. 0.1.0 was tagged on the public repo but never publi
 - Types generated from the vendored `receipt.schema.json`.
 
 [Unreleased]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...HEAD
+[0.4.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...sdk-js-v0.4.0
 [0.3.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.2.0...sdk-js-v0.3.0
 [0.2.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.1.6...sdk-js-v0.2.0
 [0.1.6]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.1.5...sdk-js-v0.1.6

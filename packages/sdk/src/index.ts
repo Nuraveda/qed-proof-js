@@ -21,6 +21,17 @@ export type {
 export { QedProofError, RateLimitError } from "./errors.js";
 export { verifyReceipt } from "./verify.js";
 export type { VerifyReport, VerifyChecks, VerifyOptions } from "./verify.js";
+export {
+  verifyNitroAttestation,
+  verifyEnclaveReceipt,
+  attestationDocumentSha256,
+  enclaveStatement,
+  enclaveStatementDigest,
+  AttestationError,
+  ATTESTATION_REASONS,
+  NITRO_ROOT_SHA256,
+} from "./nitro.js";
+export type { NitroAttestation, NitroVerifyOptions, AttestationReason, VerifierBuild } from "./nitro.js";
 export type { Keyset, Proof, AnchorResult } from "./anchor.js";
 export { verifyTreeHead, verifyConsistency, checkConsistencyDoc } from "./log.js";
 export type { TreeHead, TreeHeadBody, TreeHeadReport, ConsistencyDoc } from "./log.js";

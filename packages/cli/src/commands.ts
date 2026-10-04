@@ -221,6 +221,8 @@ export async function verify(
     head?: string;
     consistency?: string[];
     issuer?: string;
+    /** TESTS ONLY: a PEM or DER certificate to trust as the attestation root instead of the AWS Nitro root. */
+    nitroRoot?: string;
     json?: boolean;
   },
   io: Io,
@@ -239,12 +241,19 @@ export async function verify(
     if (!issuer && /^https?:\/\//.test(url) && url.endsWith("/v1/log/head")) issuer = url.slice(0, -"/v1/log/head".length);
   }
   const consistency = await Promise.all((args.consistency ?? []).map((f) => loadJson(f, "consistency proof")));
+  // --nitro-root: a trust-anchor override for tests, as in check.py. A PEM file is passed as text, anything else as DER.
+  let nitroRoot: string | Uint8Array | undefined;
+  if (args.nitroRoot) {
+    const raw = readFileSync(args.nitroRoot);
+    nitroRoot = raw.toString("latin1").trimStart().startsWith("-----BEGIN") ? raw.toString("utf-8") : new Uint8Array(raw);
+  }
   const report = await verifyReceipt(receiptText, {
     keys,
     rpcUrl: args.rpc,
     pipeline,
     head,
     issuer,
+    nitroRoot,
     consistency: consistency.length > 0 ? (consistency as Parameters<typeof verifyReceipt>[1]["consistency"]) : undefined,
   });
 
@@ -255,6 +264,7 @@ export async function verify(
     io.log(`signature:  ${report.checks.signature}`);
     io.log(`inclusion:  ${report.checks.inclusion}`);
     io.log(`anchor:     ${report.checks.anchor}`);
+    io.log(`attestation: ${report.checks.attestation === undefined ? "not applicable" : report.checks.attestation}`);
     if (report.checks.policy !== undefined) io.log(`policy:     ${report.checks.policy}`);
     if (report.checks.head !== undefined) io.log(`head:       ${report.checks.head}`);
     io.log(`verdict:    ${report.verdict ?? "-"}`);

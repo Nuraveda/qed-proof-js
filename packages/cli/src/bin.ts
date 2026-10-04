@@ -104,12 +104,13 @@ async function main(argv: string[]): Promise<number> {
     case "verify": {
       const [file, ...flagArgs] = rest;
       if (!file) {
-        defaultIo.error("usage: qed verify <file|https-url> [--keys file|url] [--rpc url] [--pipeline file] [--head file|url] [--consistency file ...] [--issuer url] [--json]");
+        defaultIo.error("usage: qed verify <file|https-url> [--keys file|url] [--rpc url] [--pipeline file] [--head file|url] [--consistency file ...] [--issuer url] [--nitro-root file (tests only)] [--json]");
         return 1;
       }
       const { values } = parseArgs({
         args: flagArgs,
         options: {
+          "nitro-root": { type: "string" },
           keys: { type: "string" },
           rpc: { type: "string" },
           pipeline: { type: "string" },
@@ -128,6 +129,7 @@ async function main(argv: string[]): Promise<number> {
           head: values.head as string | undefined,
           consistency: (values.consistency as string[]) ?? [],
           issuer: values.issuer as string | undefined,
+          nitroRoot: values["nitro-root"] as string | undefined,
           json: values.json as boolean | undefined,
         },
         defaultIo,

@@ -49,7 +49,7 @@ export type Body = {
   trust_level: number;
   attestation?: {
     type: string;
-    document: B64Url;
+    document_sha256: string;
   };
   supersedes?: string;
   policy?: Policy;
@@ -80,6 +80,7 @@ export interface PoAWReceiptPoaw01AndPoaw02 {
   body: Body;
   signature: Signature;
   proof?: Proof;
+  attestation_document?: B64Url;
 }
 export interface Policy {
   pipeline_id: string;

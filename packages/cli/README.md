@@ -22,6 +22,8 @@ qed watch <claim-id> [--json]
 
 qed verify <file|https-url> [--keys file|url] [--rpc url] [--pipeline file] [--json]   # offline check, exit 1 if not valid
 qed verify <file> --head <file|url> [--consistency <file> ...] [--issuer <url>]        # also check the log (below)
+# At trust level 3 `qed verify` also prints `attestation:` (the AWS Nitro Enclaves check). `--nitro-root <file>` swaps the
+# trusted root for a test one; never use it on real receipts.
 
 qed log head [--verify] [--keys file|url] [--json]   # the public signed tree head; no API key needed
 ```

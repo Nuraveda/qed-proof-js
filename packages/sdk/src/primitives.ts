@@ -12,6 +12,8 @@ export const SPEC_VERSION = "poaw/0.1";
 export const SIG_DOMAIN = new TextEncoder().encode("POAW-RECEIPT-V0\n");
 /** §5.1: a change entry is signed under its own domain, so it can never verify as a receipt. */
 export const CHANGE_SIG_DOMAIN = new TextEncoder().encode("POAW-CHANGE-V0\n");
+/** §8.5: a signed tree head is signed under its own domain, so it can never verify as a receipt or a change entry. */
+export const TREE_HEAD_SIG_DOMAIN = new TextEncoder().encode("POAW-TREE-HEAD-V0\n");
 
 // --- encoding (§3) -----------------------------------------------------------------------------
 
@@ -216,6 +218,52 @@ export function rootFromInclusion(
     sn >>= 1;
   }
   return sn === 0 ? r : null;
+}
+
+/**
+ * RFC 9162 §2.1.4.2 consistency verification. True iff `proof` shows the size-`m` tree with root `oldRoot` is a prefix of
+ * the size-`n` tree with root `newRoot`. Ported line for line from `poaw_core.verify_consistency`.
+ */
+export function verifyConsistency(
+  m: number,
+  n: number,
+  oldRoot: Uint8Array,
+  newRoot: Uint8Array,
+  proof: Uint8Array[],
+): boolean {
+  if (!Number.isSafeInteger(m) || !Number.isSafeInteger(n) || !(m > 0 && m <= n)) return false;
+  if (m === n) return proof.length === 0 && bytesEqual(oldRoot, newRoot);
+  if (proof.length === 0) return false;
+  const isPow2 = (x: number) => x > 0 && Number.isInteger(Math.log2(x)) && 2 ** Math.log2(x) === x;
+  const path = isPow2(m) ? [oldRoot, ...proof] : [...proof];
+  // Plain arithmetic, not bit operators: sizes may exceed 2^31.
+  let fn = m - 1;
+  let sn = n - 1;
+  const odd = (x: number) => x % 2 === 1;
+  while (odd(fn)) {
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
+  }
+  let fr = path[0];
+  let sr = path[0];
+  for (const c of path.slice(1)) {
+    if (sn === 0) return false;
+    if (odd(fn) || fn === sn) {
+      fr = nodeHash(c, fr);
+      sr = nodeHash(c, sr);
+      if (!odd(fn)) {
+        while (fn !== 0 && !odd(fn)) {
+          fn = Math.floor(fn / 2);
+          sn = Math.floor(sn / 2);
+        }
+      }
+    } else {
+      sr = nodeHash(sr, c);
+    }
+    fn = Math.floor(fn / 2);
+    sn = Math.floor(sn / 2);
+  }
+  return sn === 0 && bytesEqual(fr, oldRoot) && bytesEqual(sr, newRoot);
 }
 
 export { bytesEqual };

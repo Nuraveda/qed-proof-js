@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { QedProof, actions, verifyReceipt, type ClaimAction } from "@qed-proof/sdk";
+import { QedProof, actions, verifyReceipt, verifyTreeHead, type ClaimAction } from "@qed-proof/sdk";
 import { readConfig, writeConfig, clearConfig, resolveApiKey, resolveBaseUrl, maskKey } from "./config.js";
 import { promptHidden, readStdinAll } from "./prompt.js";
 import type { Io } from "./io.js";
@@ -203,15 +203,50 @@ async function loadKeys(source: string | undefined): Promise<unknown> {
   return JSON.parse(readFileSync(source, "utf-8"));
 }
 
+async function loadJson(source: string, what: string): Promise<unknown> {
+  if (source.startsWith("http://") || source.startsWith("https://")) {
+    const res = await fetch(source);
+    if (!res.ok) throw new Error(`could not fetch ${what}: HTTP ${res.status}`);
+    return res.json();
+  }
+  return JSON.parse(readFileSync(source, "utf-8"));
+}
+
 export async function verify(
-  args: { file: string; keys?: string; rpc?: string; pipeline?: string; json?: boolean },
+  args: {
+    file: string;
+    keys?: string;
+    rpc?: string;
+    pipeline?: string;
+    head?: string;
+    consistency?: string[];
+    issuer?: string;
+    json?: boolean;
+  },
   io: Io,
 ): Promise<number> {
   const receiptText = await loadReceiptText(args.file);
   const keys = (await loadKeys(args.keys)) as Parameters<typeof verifyReceipt>[1]["keys"];
   // The pipeline document lets the checker confirm the entry's `policy` (SPEC §15.2). Without it, policy is "not_checked".
   const pipeline = args.pipeline ? JSON.parse(readFileSync(args.pipeline, "utf-8")) : undefined;
-  const report = await verifyReceipt(receiptText, { keys, rpcUrl: args.rpc, pipeline });
+  // Same semantics as oss/spec/tools/check.py: --head is a file or the issuer's /v1/log/head URL (which also names the
+  // issuer), --consistency files are /v1/log/consistency responses, --issuer fetches a missing proof (SPEC §8.4-§8.5).
+  let issuer = args.issuer;
+  let head: unknown;
+  if (args.head) {
+    head = await loadJson(args.head, "tree head");
+    const url = args.head.replace(/\/+$/, "");
+    if (!issuer && /^https?:\/\//.test(url) && url.endsWith("/v1/log/head")) issuer = url.slice(0, -"/v1/log/head".length);
+  }
+  const consistency = await Promise.all((args.consistency ?? []).map((f) => loadJson(f, "consistency proof")));
+  const report = await verifyReceipt(receiptText, {
+    keys,
+    rpcUrl: args.rpc,
+    pipeline,
+    head,
+    issuer,
+    consistency: consistency.length > 0 ? (consistency as Parameters<typeof verifyReceipt>[1]["consistency"]) : undefined,
+  });
 
   if (args.json) {
     io.log(JSON.stringify(report, null, 2));
@@ -221,9 +256,42 @@ export async function verify(
     io.log(`inclusion:  ${report.checks.inclusion}`);
     io.log(`anchor:     ${report.checks.anchor}`);
     if (report.checks.policy !== undefined) io.log(`policy:     ${report.checks.policy}`);
+    if (report.checks.head !== undefined) io.log(`head:       ${report.checks.head}`);
     io.log(`verdict:    ${report.verdict ?? "-"}`);
     io.log(`valid:      ${report.valid}`);
     io.log(`trust level achieved: ${report.achieved_trust_level}`);
   }
   return report.valid ? 0 : 1;
+}
+
+/**
+ * `qed log head [--verify]`: the issuer's signed tree head. The log is public, so no API key is sent. With `--verify` the
+ * head's signature is checked against `/.well-known/poaw-keys.json` (or `--keys`); exit 1 when it does not verify.
+ */
+export async function logHead(args: { verify?: boolean; keys?: string; json?: boolean }, io: Io, fetchImpl?: typeof fetch): Promise<number> {
+  const qp = client(fetchImpl);
+  const head = await qp.logHead();
+  const body = head.tree_head.body;
+  const sig = head.tree_head.signature;
+  let report: ReturnType<typeof verifyTreeHead> | undefined;
+  if (args.verify) {
+    const keys = args.keys ? await loadKeys(args.keys) : await qp.getKeys();
+    report = verifyTreeHead(head, keys as Parameters<typeof verifyTreeHead>[1]);
+  }
+  if (args.json) {
+    io.log(JSON.stringify(report ? { ...head, verification: report } : head, null, 2));
+  } else {
+    io.log(`log:        ${body.log_id}`);
+    io.log(`size:       ${body.tree_size}`);
+    io.log(`root:       ${body.root_hash}`);
+    io.log(`issued at:  ${body.issued_at}`);
+    io.log(`key id:     ${sig.key_id}`);
+    if (head.anchor) {
+      io.log(`anchor:     ${head.anchor.chain} tx ${head.anchor.tx_hash} (tree size ${head.anchor.tree_size}, block ${head.anchor.block_number})`);
+    } else {
+      io.log("anchor:     none yet");
+    }
+    io.log(`signature:  ${report ? (report.valid ? "valid" : "INVALID") : "not checked (use --verify)"}`);
+  }
+  return report && !report.valid ? 1 : 0;
 }

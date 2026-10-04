@@ -20,6 +20,7 @@ import {
 } from "./primitives.js";
 import { changeSchemaValid, pipelineSchemaValid, schemaValid } from "./schema.js";
 import { checkAnchor, type Keyset, type Proof } from "./anchor.js";
+import { checkHead, consistencySource, type ConsistencyDoc } from "./log.js";
 
 export interface VerifyChecks {
   spec_version: boolean;
@@ -33,6 +34,8 @@ export interface VerifyChecks {
   anchor: boolean | "absent" | "not_checked_offline" | string;
   /** Present only when the body carries a `policy` (§15.2). "not_checked" when no pipeline document was given. */
   policy?: boolean | "not_checked";
+  /** Present only when a signed tree head was supplied (§8.5): true, or why the receipt's tree isn't proven part of it. */
+  head?: boolean | string;
 }
 
 export interface VerifyReport {
@@ -50,6 +53,17 @@ export interface VerifyOptions {
   rpcUrl?: string;
   /** The pipeline document the entry's `policy` points at (§15.2). Without it, `checks.policy` is "not_checked". */
   pipeline?: unknown;
+  /**
+   * Consistency proofs (SPEC §8.4) the caller already holds, shaped like `GET /v1/log/consistency`. Used when the anchor's
+   * tree size differs from the receipt's proof, and to connect the receipt's tree to `head`.
+   */
+  consistency?: ConsistencyDoc | ConsistencyDoc[];
+  /** The issuer's base URL: a needed consistency proof not supplied is fetched from its `/v1/log/consistency`. */
+  issuer?: string;
+  /** A signed tree head (§8.5): a bare `{body, signature}` or the `/v1/log/head` response. Adds `checks.head`. */
+  head?: unknown;
+  /** The fetch used for `issuer` requests. Defaults to the global one. */
+  fetch?: typeof fetch;
 }
 
 /** SPEC §15.2: the document is valid, its id and version are the policy's, and its digest is the policy's. */
@@ -149,6 +163,7 @@ export async function verifyReceipt(receipt: unknown | string, options: VerifyOp
   }
 
   const proof = parsed && typeof parsed === "object" ? parsed.proof : undefined;
+  const getConsistency = consistencySource({ consistency: options.consistency, issuer: options.issuer, fetch: options.fetch });
   let provenBy: number | null | undefined;
   if (!proof) {
     checks.inclusion = "absent";
@@ -167,9 +182,13 @@ export async function verifyReceipt(receipt: unknown | string, options: VerifyOp
   } else if (!options.rpcUrl) {
     checks.anchor = "not_checked_offline";
   } else {
-    const a = await checkAnchor(proof, keyset, options.rpcUrl);
+    const a = await checkAnchor(proof, keyset, options.rpcUrl, getConsistency);
     checks.anchor = a.ok ? true : a.reason;
     provenBy = a.proven_by;
+  }
+
+  if (options.head !== undefined && options.head !== null) {
+    checks.head = await checkHead(options.head, proof, keyset, getConsistency);
   }
 
   // §15.2: only present when the body carries a policy. Without the pipeline document it is "not_checked".
@@ -186,7 +205,8 @@ export async function verifyReceipt(receipt: unknown | string, options: VerifyOp
   const valid =
     required.every((k) => checks[k] === true) &&
     (checks.inclusion === true || checks.inclusion === "absent") &&
-    (checks.policy === undefined || checks.policy === true || checks.policy === "not_checked");
+    (checks.policy === undefined || checks.policy === true || checks.policy === "not_checked") &&
+    (checks.head === undefined || checks.head === true);
 
   const achievedTrustLevel = valid ? (checks.inclusion === true && checks.anchor === true ? 2 : 1) : 0;
   const verdictValue = (body as Record<string, unknown>).verdict as { value?: string } | undefined;

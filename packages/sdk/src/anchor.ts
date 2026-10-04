@@ -4,6 +4,7 @@
  */
 import { keccak_256 } from "@noble/hashes/sha3";
 import { b64uDecode, b64u, bytesEqual } from "./primitives.js";
+import { checkConsistencyDoc, type GetConsistency } from "./log.js";
 import { decodeSingleDynamicTupleReturn, decodeTupleWithTrailingDynamic, bytesToHex0x, hexToBytes } from "./abi.js";
 
 const EAS = "0x4200000000000000000000000000000000000021"; // OP-stack predeploy (Base mainnet + Base Sepolia)
@@ -57,7 +58,13 @@ async function rpc(url: string, method: string, ...params: unknown[]): Promise<u
 }
 
 /** Return {ok, reason, proven_by}. Any doubt → ok false, never a pass. */
-export async function checkAnchor(proof: Proof, keyset: Keyset, rpcUrl: string): Promise<AnchorResult> {
+export async function checkAnchor(
+  proof: Proof,
+  keyset: Keyset,
+  rpcUrl: string,
+  /** Returns a `/v1/log/consistency` response for (first, second), or null. Only consulted when the sizes differ. */
+  getConsistency?: GetConsistency,
+): Promise<AnchorResult> {
   const a = proof.anchor;
   if (!a) return { ok: false, reason: "unknown_scheme", proven_by: null };
   try {
@@ -116,8 +123,16 @@ export async function checkAnchor(proof: Proof, keyset: Keyset, rpcUrl: string):
       return { ok: false, reason: "log_or_size_mismatch", proven_by: null };
     }
     if (a.tree_size !== proof.tree_size) {
-      // this issuer proves at the anchored size
-      return { ok: false, reason: "consistency_proof_required", proven_by: null };
+      // §8.4: connect the attested root and the receipt's root with a consistency proof. The smaller tree is the old one.
+      const doc = getConsistency ? await getConsistency(Math.min(a.tree_size, proof.tree_size), Math.max(a.tree_size, proof.tree_size)) : null;
+      if (!doc) return { ok: false, reason: "consistency_proof_required", proven_by: null };
+      const chainRoot = b64u(root);
+      const connected =
+        a.tree_size < proof.tree_size
+          ? checkConsistencyDoc(doc, a.tree_size, proof.tree_size, chainRoot, proof.root_hash)
+          : checkConsistencyDoc(doc, proof.tree_size, a.tree_size, proof.root_hash, chainRoot);
+      if (!connected) return { ok: false, reason: "consistency_proof_invalid", proven_by: null };
+      return { ok: true, reason: "anchored", proven_by: Number(time_) };
     }
     if (!bytesEqual(root, b64uDecode(proof.root_hash))) {
       return { ok: false, reason: "root_mismatch", proven_by: null };

@@ -8,11 +8,22 @@ export type {
   ClaimSummary,
   ListClaimsOptions,
   ClaimPage,
+  LogAnchor,
+  LogHead,
+  LogConsistency,
+  LogInclusionProof,
+  LogAnchorsOptions,
+  LogAnchorPage,
+  LogEntriesOptions,
+  LogEntry,
+  LogEntryPage,
 } from "./client.js";
 export { QedProofError, RateLimitError } from "./errors.js";
 export { verifyReceipt } from "./verify.js";
 export type { VerifyReport, VerifyChecks, VerifyOptions } from "./verify.js";
 export type { Keyset, Proof, AnchorResult } from "./anchor.js";
+export { verifyTreeHead, verifyConsistency, checkConsistencyDoc } from "./log.js";
+export type { TreeHead, TreeHeadBody, TreeHeadReport, ConsistencyDoc } from "./log.js";
 export * as actions from "./actions.js";
 export type { ClaimAction } from "./actions.js";
 export {
@@ -30,6 +41,7 @@ export {
   SPEC_VERSION,
   SIG_DOMAIN,
   CHANGE_SIG_DOMAIN,
+  TREE_HEAD_SIG_DOMAIN,
   entryKind,
   pipelineDigest,
 } from "./primitives.js";

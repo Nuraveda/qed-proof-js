@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { login, logout, claim, claimsList, receiptsGet, watch, verify } from "./commands.js";
+import { login, logout, claim, claimsList, receiptsGet, watch, verify, logHead } from "./commands.js";
 import { defaultIo } from "./io.js";
 
 async function main(argv: string[]): Promise<number> {
@@ -104,7 +104,7 @@ async function main(argv: string[]): Promise<number> {
     case "verify": {
       const [file, ...flagArgs] = rest;
       if (!file) {
-        defaultIo.error("usage: qed verify <file|https-url> [--keys file|url] [--rpc url] [--pipeline file] [--json]");
+        defaultIo.error("usage: qed verify <file|https-url> [--keys file|url] [--rpc url] [--pipeline file] [--head file|url] [--consistency file ...] [--issuer url] [--json]");
         return 1;
       }
       const { values } = parseArgs({
@@ -113,6 +113,9 @@ async function main(argv: string[]): Promise<number> {
           keys: { type: "string" },
           rpc: { type: "string" },
           pipeline: { type: "string" },
+          head: { type: "string" },
+          consistency: { type: "string", multiple: true, default: [] },
+          issuer: { type: "string" },
           json: { type: "boolean" },
         },
       });
@@ -122,13 +125,31 @@ async function main(argv: string[]): Promise<number> {
           keys: values.keys as string | undefined,
           rpc: values.rpc as string | undefined,
           pipeline: values.pipeline as string | undefined,
+          head: values.head as string | undefined,
+          consistency: (values.consistency as string[]) ?? [],
+          issuer: values.issuer as string | undefined,
           json: values.json as boolean | undefined,
         },
         defaultIo,
       );
     }
+    case "log": {
+      const [sub, ...flagArgs] = rest;
+      if (sub !== "head") {
+        defaultIo.error("usage: qed log head [--verify] [--keys file|url] [--json]");
+        return 1;
+      }
+      const { values } = parseArgs({
+        args: flagArgs,
+        options: { verify: { type: "boolean" }, keys: { type: "string" }, json: { type: "boolean" } },
+      });
+      return logHead(
+        { verify: values.verify as boolean | undefined, keys: values.keys as string | undefined, json: values.json as boolean | undefined },
+        defaultIo,
+      );
+    }
     default:
-      defaultIo.error("qed: commands are login, logout, claim, claims list, receipts get, watch, verify");
+      defaultIo.error("qed: commands are login, logout, claim, claims list, receipts get, watch, verify, log head");
       return command ? 1 : 0;
   }
 }

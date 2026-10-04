@@ -5,8 +5,9 @@
  */
 import type { ClaimAction } from "./actions.js";
 import { QedProofError, RateLimitError } from "./errors.js";
-import { RECEIPT_TEXT, verifyReceipt, type VerifyReport } from "./verify.js";
+import { RECEIPT_TEXT, verifyReceipt, type VerifyOptions, type VerifyReport } from "./verify.js";
 import type { Keyset } from "./anchor.js";
+import type { ConsistencyDoc, TreeHead } from "./log.js";
 
 export interface QedProofOptions {
   apiKey?: string;
@@ -61,6 +62,69 @@ export interface ListClaimsOptions {
 export interface ClaimPage {
   claims: ClaimSummary[];
   nextCursor: string | null;
+}
+
+/** A landed on-chain anchor of a tree head (SPEC §8.4). */
+export interface LogAnchor {
+  chain: string;
+  scheme: string;
+  uid: string;
+  tx_hash: string;
+  tree_size: number;
+  root_hash: string;
+  block_number: number;
+  block_time: string;
+  [key: string]: unknown;
+}
+
+/** `GET /v1/log/head`: the signed tree head and the latest landed anchor (or null). */
+export interface LogHead {
+  tree_head: TreeHead;
+  anchor: LogAnchor | null;
+}
+
+/** `GET /v1/log/consistency`: an RFC 6962 consistency proof between two tree sizes. */
+export type LogConsistency = ConsistencyDoc & { log_id: string; first_root: string; second_root: string };
+
+/** `GET /v1/log/proof`: an inclusion proof for one leaf. */
+export interface LogInclusionProof {
+  log_id: string;
+  leaf_index: number;
+  tree_size: number;
+  leaf_hash: string;
+  root_hash: string;
+  inclusion: string[];
+}
+
+export interface LogAnchorsOptions {
+  /** 1-100, default 20 (server side). */
+  limit?: number;
+  /** Return anchors with a tree size below this one (the previous page's `next`). */
+  before?: number;
+}
+
+export interface LogAnchorPage {
+  anchors: LogAnchor[];
+  next: number | null;
+}
+
+export interface LogEntriesOptions {
+  /** First leaf index; server default is the newest page. */
+  start?: number;
+  /** 1-100, default 50 (server side). */
+  limit?: number;
+}
+
+export interface LogEntry {
+  leaf_index: number;
+  leaf_hash: string;
+  created_at: string;
+}
+
+export interface LogEntryPage {
+  tree_size: number;
+  entries: LogEntry[];
+  next: number | null;
 }
 
 const LIST_CLAIMS_DEFAULT_LIMIT = 50;
@@ -231,10 +295,62 @@ export class QedProof {
     return (await this.request("GET", "/.well-known/poaw-keys.json", { auth: false })) as Keyset;
   }
 
-  async verify(receipt: unknown | string, options: { keys?: Keyset; rpcUrl?: string } = {}): Promise<VerifyReport> {
-    const keys = options.keys ?? (await this.getKeys());
-    return verifyReceipt(receipt, { keys, rpcUrl: options.rpcUrl });
+  /** The signed tree head and latest anchor. Public: no Authorization header. */
+  async logHead(): Promise<LogHead> {
+    return (await this.request("GET", "/v1/log/head", { auth: false })) as LogHead;
   }
+
+  /** A consistency proof that the size-`first` tree is a prefix of the size-`second` tree. Public. */
+  async logConsistency(first: number, second: number): Promise<LogConsistency> {
+    assertIndex("first", first);
+    assertIndex("second", second);
+    return (await this.request("GET", `/v1/log/consistency?first=${first}&second=${second}`, { auth: false })) as LogConsistency;
+  }
+
+  /** An inclusion proof for `leafIndex` in the tree of `treeSize` (default: the current size). Public. */
+  async logProof(leafIndex: number, treeSize?: number): Promise<LogInclusionProof> {
+    assertIndex("leafIndex", leafIndex);
+    let path = `/v1/log/proof?leaf_index=${leafIndex}`;
+    if (treeSize !== undefined) {
+      assertIndex("treeSize", treeSize);
+      path += `&tree_size=${treeSize}`;
+    }
+    return (await this.request("GET", path, { auth: false })) as LogInclusionProof;
+  }
+
+  /** Landed anchors, newest first; page with `next` as `before`. Public. */
+  async logAnchors(options: LogAnchorsOptions = {}): Promise<LogAnchorPage> {
+    const query: Record<string, string> = {};
+    if (options.limit !== undefined) query.limit = String(assertIndex("limit", options.limit));
+    if (options.before !== undefined) query.before = String(assertIndex("before", options.before));
+    const qs = new URLSearchParams(query).toString();
+    return (await this.request("GET", `/v1/log/anchors${qs ? `?${qs}` : ""}`, { auth: false })) as LogAnchorPage;
+  }
+
+  /** The entry ledger (leaf hashes only), ascending from `start`; page with `next`. Public. */
+  async logEntries(options: LogEntriesOptions = {}): Promise<LogEntryPage> {
+    const query: Record<string, string> = {};
+    if (options.start !== undefined) query.start = String(assertIndex("start", options.start));
+    if (options.limit !== undefined) query.limit = String(assertIndex("limit", options.limit));
+    const qs = new URLSearchParams(query).toString();
+    return (await this.request("GET", `/v1/log/entries${qs ? `?${qs}` : ""}`, { auth: false })) as LogEntryPage;
+  }
+
+  async verify(
+    receipt: unknown | string,
+    options: { keys?: Keyset; rpcUrl?: string; consistency?: VerifyOptions["consistency"]; head?: unknown } = {},
+  ): Promise<VerifyReport> {
+    const keys = options.keys ?? (await this.getKeys());
+    // This client knows its issuer: an anchor at a different tree size is proven with that issuer's consistency proof.
+    return verifyReceipt(receipt, {
+      keys, rpcUrl: options.rpcUrl, consistency: options.consistency, head: options.head, issuer: this.baseUrl, fetch: this.fetchImpl,
+    });
+  }
+}
+
+function assertIndex(name: string, value: number): number {
+  if (!Number.isInteger(value) || value < 0) throw new RangeError(`${name} must be a non-negative integer, got ${value}`);
+  return value;
 }
 
 function sleep(ms: number): Promise<void> {

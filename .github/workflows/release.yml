@@ -50,3 +50,25 @@ jobs:
       - run: npm run build  # sdk first, then cli: the cli imports the sdk's built types
       - run: npm test --workspace packages/cli
       - run: npm publish --provenance --access public --workspace packages/cli
+
+  github-release:
+    # Creates (or refreshes) the GitHub Release for the tag once the package is on the registry; the release body is that
+    # version's section of the changelog. Separate job so `contents: write` is held by nothing that publishes.
+    needs: publish-cli
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create or update the GitHub Release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#sdk-js-v}"
+          section() { awk -v v="$VERSION" 'BEGIN{h="## [" v "]"} index($0,h)==1{p=1;next} p&&(/^## \[/||/^\[[^]]+\]: http/){exit} p' "$1"; }
+          { echo "## @qed-proof/sdk"; section packages/sdk/CHANGELOG.md; echo; echo "## @qed-proof/cli"; section packages/cli/CHANGELOG.md; } > notes.md
+          grep -q '[^[:space:]]' <(section packages/sdk/CHANGELOG.md) || { echo "::error::no sdk CHANGELOG section for $VERSION"; exit 1; }
+          grep -q '[^[:space:]]' <(section packages/cli/CHANGELOG.md) || { echo "::error::no cli CHANGELOG section for $VERSION"; exit 1; }
+          gh release view "$TAG" >/dev/null 2>&1 && gh release edit "$TAG" --title "qed-proof JS $VERSION" --notes-file notes.md --latest \
+            || gh release create "$TAG" --verify-tag --title "qed-proof JS $VERSION" --notes-file notes.md --latest

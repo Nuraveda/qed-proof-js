@@ -216,3 +216,62 @@ describe("getReceipt keeps the JSON text for verification", () => {
     expect(report.valid).toBe(false);
   });
 });
+
+describe("QedProof public log methods", () => {
+  function setup(body: unknown) {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return jsonResponse(body);
+    });
+    const qp = new QedProof({ apiKey: "qed_sk_secret", baseUrl: "https://api.example.test/", fetch: fetchMock as unknown as typeof fetch });
+    return { calls, qp };
+  }
+  const noAuth = (c: { init: RequestInit }) => expect((c.init.headers as Record<string, string>).authorization).toBeUndefined();
+
+  it("logHead GETs /v1/log/head without a key", async () => {
+    const head = { tree_head: { body: { log_id: "l", tree_size: 3, root_hash: "r", issued_at: "t" }, signature: {} }, anchor: null };
+    const { calls, qp } = setup(head);
+    expect(await qp.logHead()).toEqual(head);
+    expect(calls[0].url).toBe("https://api.example.test/v1/log/head");
+    noAuth(calls[0]);
+  });
+
+  it("logConsistency, logProof build the right queries without a key", async () => {
+    const { calls, qp } = setup({ proof: [] });
+    await qp.logConsistency(2, 5);
+    await qp.logProof(4);
+    await qp.logProof(4, 9);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.example.test/v1/log/consistency?first=2&second=5",
+      "https://api.example.test/v1/log/proof?leaf_index=4",
+      "https://api.example.test/v1/log/proof?leaf_index=4&tree_size=9",
+    ]);
+    calls.forEach(noAuth);
+  });
+
+  it("logAnchors and logEntries pass paging options, omitting unset ones", async () => {
+    const { calls, qp } = setup({ anchors: [], entries: [], next: null });
+    await qp.logAnchors();
+    await qp.logAnchors({ limit: 10, before: 7 });
+    await qp.logEntries();
+    await qp.logEntries({ start: 0, limit: 100 });
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.example.test/v1/log/anchors",
+      "https://api.example.test/v1/log/anchors?limit=10&before=7",
+      "https://api.example.test/v1/log/entries",
+      "https://api.example.test/v1/log/entries?start=0&limit=100",
+    ]);
+    calls.forEach(noAuth);
+  });
+
+  it("rejects bad numbers locally and surfaces API errors", async () => {
+    const { calls, qp } = setup({});
+    await expect(qp.logConsistency(-1, 2)).rejects.toThrow(RangeError);
+    await expect(qp.logProof(1.5)).rejects.toThrow(RangeError);
+    expect(calls).toHaveLength(0);
+    const f = vi.fn(async () => jsonResponse({ detail: "no such size" }, { status: 404 }));
+    const qp2 = new QedProof({ fetch: f as unknown as typeof fetch });
+    await expect(qp2.logConsistency(1, 99)).rejects.toMatchObject({ status: 404 });
+  });
+});

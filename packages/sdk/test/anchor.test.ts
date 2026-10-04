@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkAnchor, type Proof, type Keyset } from "../src/anchor.js";
 import { sha256, b64u, b64uDecode } from "../src/primitives.js";
+import { consistencySource, type ConsistencyDoc } from "../src/log.js";
 
 const ATTESTER = "0x23a848B41db0f152b7B9811e8314B6531dFAe523";
 const SCHEMA = new Uint8Array(32).fill(0x5c);
@@ -189,5 +190,58 @@ describe("checkAnchor (fake chain)", () => {
     const proof = { ...PROOF, tree_size: 12 };
     const r = await checkAnchor(proof, KEYS, "http://rpc");
     expect(r.reason).toBe("consistency_proof_required");
+  });
+});
+
+// --- an anchor at a different size than the receipt's proof: verified with a consistency proof (SPEC §8.4) -----------------
+const enc = new TextEncoder();
+const cat = (...p: Uint8Array[]) => Uint8Array.from(p.flatMap((x) => [...x]));
+const node = (l: Uint8Array, r: Uint8Array) => sha256(cat(Uint8Array.of(1), l, r));
+const split = (n: number) => { let k = 1; while (k * 2 < n) k *= 2; return k; };
+const LEAVES = Array.from({ length: 12 }, (_, i) => sha256(cat(Uint8Array.of(0), enc.encode(`leaf-${i}`))));
+const mth = (l: Uint8Array[]): Uint8Array => (l.length === 1 ? l[0] : node(mth(l.slice(0, split(l.length))), mth(l.slice(split(l.length)))));
+const rootAt = (n: number) => mth(LEAVES.slice(0, n));
+function cproof(m: number, n: number): ConsistencyDoc {
+  const sub = (mm: number, d: Uint8Array[], b: boolean): Uint8Array[] => {
+    if (mm === d.length) return b ? [] : [mth(d)];
+    const k = split(d.length);
+    return mm <= k ? [...sub(mm, d.slice(0, k), b), mth(d.slice(k))] : [...sub(mm - k, d.slice(k), false), mth(d.slice(0, k))];
+  };
+  return { first: m, second: n, proof: sub(m, LEAVES.slice(0, n), true).map(b64u) };
+}
+function sizedProof(size: number, anchorSize: number): Proof {
+  return { ...PROOF, tree_size: size, root_hash: b64u(rootAt(size)), anchor: { ...PROOF.anchor!, tree_size: anchorSize } };
+}
+
+describe("checkAnchor with a consistency proof", () => {
+  it.each([[6, 9], [9, 6], [4, 8]])("proof size %i, anchor size %i: anchored", async (proofSize, anchorSize) => {
+    globalThis.fetch = vi.fn(chain({ size: BigInt(anchorSize), root: rootAt(anchorSize) })) as unknown as typeof fetch;
+    const get = consistencySource({ consistency: cproof(Math.min(proofSize, anchorSize), Math.max(proofSize, anchorSize)) });
+    expect(await checkAnchor(sizedProof(proofSize, anchorSize), KEYS, "http://rpc", get)).toEqual({ ok: true, reason: "anchored", proven_by: 1790000000 });
+  });
+
+  it("without a proof it is still consistency_proof_required", async () => {
+    globalThis.fetch = vi.fn(chain({ size: 9n, root: rootAt(9) })) as unknown as typeof fetch;
+    const r = await checkAnchor(sizedProof(6, 9), KEYS, "http://rpc", consistencySource());
+    expect(r.reason).toBe("consistency_proof_required");
+  });
+
+  it("a forged proof, a forked chain root, or a proof for other sizes is consistency_proof_invalid", async () => {
+    const forged = cproof(6, 9); forged.proof[forged.proof.length - 1] = b64u(sha256(enc.encode("forged")));
+    globalThis.fetch = vi.fn(chain({ size: 9n, root: rootAt(9) })) as unknown as typeof fetch;
+    expect((await checkAnchor(sizedProof(6, 9), KEYS, "http://rpc", consistencySource({ consistency: forged }))).reason).toBe("consistency_proof_invalid");
+    expect((await checkAnchor(sizedProof(6, 9), KEYS, "http://rpc", consistencySource({ consistency: cproof(6, 8) }))).reason).toBe("consistency_proof_required");
+    globalThis.fetch = vi.fn(chain({ size: 9n, root: sha256(enc.encode("forked")) })) as unknown as typeof fetch;
+    expect((await checkAnchor(sizedProof(6, 9), KEYS, "http://rpc", consistencySource({ consistency: cproof(6, 9) }))).reason).toBe("consistency_proof_invalid");
+  });
+
+  it("fetches the proof from the issuer when it knows one", async () => {
+    const rpcFetch = chain({ size: 9n, root: rootAt(9) });
+    const urls: string[] = [];
+    const issuerFetch = vi.fn(async (url: string) => { urls.push(url); return new Response(JSON.stringify(cproof(6, 9))); });
+    globalThis.fetch = vi.fn(rpcFetch) as unknown as typeof fetch;
+    const r = await checkAnchor(sizedProof(6, 9), KEYS, "http://rpc", consistencySource({ issuer: "https://api.example.test", fetch: issuerFetch as unknown as typeof fetch }));
+    expect(r.ok).toBe(true);
+    expect(urls).toEqual(["https://api.example.test/v1/log/consistency?first=6&second=9"]);
   });
 });

@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { pipelineDigest } from "../src/primitives.js";
 import { verifyReceipt } from "../src/verify.js";
+import { verifyConsistency, verifyTreeHead } from "../src/log.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsDir = join(here, "..", "..", "..", "test", "vectors");
@@ -34,6 +35,31 @@ describe("conformance vectors (poaw/0.1 and poaw/0.2)", () => {
 
   it("runs all 35 vectors", () => {
     expect(manifest.vectors).toHaveLength(35);
+  });
+});
+
+describe("public log vectors (SPEC §8.4–§8.5)", () => {
+  const read = (f: string) => JSON.parse(readFileSync(join(vectorsDir, f), "utf-8"));
+  const extra = JSON.parse(readFileSync(join(vectorsDir, "manifest.json"), "utf-8")) as {
+    tree_head_vectors: Array<{ description: string; expected: Record<string, unknown>; file: string }>;
+    consistency_vectors: Array<{ description: string; expected: { valid: boolean }; file: string }>;
+  };
+
+  for (const v of extra.tree_head_vectors) {
+    it(`${v.file}: ${v.description}`, () => {
+      expect(verifyTreeHead(read(v.file), keys)).toEqual(v.expected);
+    });
+  }
+  for (const v of extra.consistency_vectors) {
+    it(`${v.file}: ${v.description}`, () => {
+      const d = read(v.file);
+      expect(verifyConsistency(d.first, d.second, d.first_root, d.second_root, d.proof)).toBe(v.expected.valid);
+    });
+  }
+
+  it("lists 4 tree heads and 2 consistency proofs, and the original 35 vectors are untouched", () => {
+    expect(extra.tree_head_vectors).toHaveLength(4);
+    expect(extra.consistency_vectors).toHaveLength(2);
   });
 });
 

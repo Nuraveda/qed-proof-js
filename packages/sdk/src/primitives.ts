@@ -197,27 +197,28 @@ export function rootFromInclusion(
   leaf: Uint8Array,
   path: Uint8Array[],
 ): Uint8Array | null {
-  if (index >= size) return null;
-  let fn = index;
-  let sn = size - 1;
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(size) || index < 0 || index >= size) return null;
+  // BigInt keeps the bit operations exact beyond 2^31, where JavaScript's `>>` and `&` would wrap (audit #252).
+  let fn = BigInt(index);
+  let sn = BigInt(size - 1);
   let r = leaf;
   for (const p of path) {
-    if (sn === 0) return null;
-    if ((fn & 1) === 1 || fn === sn) {
+    if (sn === 0n) return null;
+    if (fn & 1n || fn === sn) {
       r = nodeHash(p, r);
-      if ((fn & 1) === 0) {
-        while (fn !== 0 && (fn & 1) === 0) {
-          fn >>= 1;
-          sn >>= 1;
+      if (!(fn & 1n)) {
+        while (fn && !(fn & 1n)) {
+          fn >>= 1n;
+          sn >>= 1n;
         }
       }
     } else {
       r = nodeHash(r, p);
     }
-    fn >>= 1;
-    sn >>= 1;
+    fn >>= 1n;
+    sn >>= 1n;
   }
-  return sn === 0 ? r : null;
+  return sn === 0n ? r : null;
 }
 
 /**

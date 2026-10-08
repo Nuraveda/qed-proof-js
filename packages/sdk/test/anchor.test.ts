@@ -220,6 +220,16 @@ describe("checkAnchor with a consistency proof", () => {
     expect(await checkAnchor(sizedProof(proofSize, anchorSize), KEYS, "http://rpc", get)).toEqual({ ok: true, reason: "anchored", proven_by: 1790000000 });
   });
 
+  it.each([6, 8])("an anchor of a smaller tree does not cover later leaf %i (audit #232)", async (leaf) => {
+    globalThis.fetch = vi.fn(chain({ size: 6n, root: rootAt(6) })) as unknown as typeof fetch;
+    const get = consistencySource({ consistency: cproof(6, 9) });
+    expect(await checkAnchor({ ...sizedProof(9, 6), leaf_index: leaf }, KEYS, "http://rpc", get)).toEqual({
+      ok: false,
+      reason: "anchor_does_not_cover_leaf",
+      proven_by: null,
+    });
+  });
+
   it("without a proof it is still consistency_proof_required", async () => {
     globalThis.fetch = vi.fn(chain({ size: 9n, root: rootAt(9) })) as unknown as typeof fetch;
     const r = await checkAnchor(sizedProof(6, 9), KEYS, "http://rpc", consistencySource());

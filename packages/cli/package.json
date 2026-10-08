@@ -1,6 +1,6 @@
 {
   "name": "@qed-proof/cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "qed: submit claims, watch verdicts and verify PoAW receipts from the terminal.",
   "license": "Apache-2.0",
   "type": "module",
@@ -24,7 +24,7 @@
     "lint": "true"
   },
   "dependencies": {
-    "@qed-proof/sdk": "0.4.0"
+    "@qed-proof/sdk": "0.4.1"
   },
   "devDependencies": {
     "@types/node": "^20.16.11",

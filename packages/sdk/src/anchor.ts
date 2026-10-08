@@ -124,6 +124,10 @@ export async function checkAnchor(
     if (!bytesEqual(logId, b64uDecode(proof.log_id)) || size !== BigInt(a.tree_size)) {
       return { ok: false, reason: "log_or_size_mismatch", proven_by: null };
     }
+    if (a.tree_size < proof.tree_size && !(Number.isInteger(proof.leaf_index) && proof.leaf_index >= 0 && proof.leaf_index < a.tree_size)) {
+      // §8.4: an anchor of a smaller tree only covers its own leaves; a leaf appended after it gets no proven-by time.
+      return { ok: false, reason: "anchor_does_not_cover_leaf", proven_by: null };
+    }
     if (a.tree_size !== proof.tree_size) {
       // §8.4: connect the attested root and the receipt's root with a consistency proof. The smaller tree is the old one.
       const doc = getConsistency ? await getConsistency(Math.min(a.tree_size, proof.tree_size), Math.max(a.tree_size, proof.tree_size)) : null;

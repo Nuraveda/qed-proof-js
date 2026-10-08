@@ -6,6 +6,17 @@ All notable changes to `@qed-proof/sdk` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-08
+
+### Fixed
+
+- Inclusion proofs are checked with BigInt arithmetic, so a tree size above 2^31 can no longer make a too-short audit
+  path verify (the 32-bit `>>`/`&` wrapped). Indices and sizes must be safe integers.
+- An anchor of a **smaller** tree than the receipt's proof no longer counts as anchoring a receipt appended after it.
+  The check now requires `proof.leaf_index < anchor.tree_size` and otherwise reports `anchor_does_not_cover_leaf`
+  (SPEC §8.4). Before, a valid consistency proof alone was accepted, so such a receipt got a proven-by time from
+  before it existed. Receipts from an honest issuer are unaffected: it attaches an anchor that covers the receipt.
+
 ## [0.4.0] - 2026-10-04
 
 Adds trust level 3: verifying the AWS Nitro Enclaves attestation of a receipt (SPEC §7.1, §10 step 5).
@@ -111,7 +122,8 @@ The first published version. 0.1.0 was tagged on the public repo but never publi
 - `QedProofError`, `RateLimitError`.
 - Types generated from the vendored `receipt.schema.json`.
 
-[Unreleased]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...HEAD
+[Unreleased]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.4.1...HEAD
+[0.4.1]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.4.0...sdk-js-v0.4.1
 [0.4.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...sdk-js-v0.4.0
 [0.3.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.2.0...sdk-js-v0.3.0
 [0.2.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.1.6...sdk-js-v0.2.0

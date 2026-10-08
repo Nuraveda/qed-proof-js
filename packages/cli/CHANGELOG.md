@@ -6,6 +6,13 @@ All notable changes to `@qed-proof/cli` are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-08
+
+### Fixed
+
+- `qed verify` uses `@qed-proof/sdk` 0.4.1: an anchor of a smaller tree no longer counts for a receipt appended
+  after it (reported as `anchor_does_not_cover_leaf`).
+
 ## [0.4.0] - 2026-10-04
 
 ### Added
@@ -84,7 +91,8 @@ The first published version. 0.1.0 was tagged on the public repo but never publi
 - `qed verify`: offline receipt check, printing signature/inclusion/anchor/verdict/trust level
   and exiting 1 when the receipt is not valid.
 
-[Unreleased]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...HEAD
+[Unreleased]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.4.1...HEAD
+[0.4.1]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.4.0...sdk-js-v0.4.1
 [0.4.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.3.0...sdk-js-v0.4.0
 [0.3.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.2.0...sdk-js-v0.3.0
 [0.2.0]: https://github.com/Nuraveda/qed-proof-js/compare/sdk-js-v0.1.6...sdk-js-v0.2.0

@@ -11,6 +11,7 @@ Both packages are released together from one tag, `sdk-js-vX.Y.Z`, so a tag alwa
 
 ## Releases
 
+- [sdk-js-v0.4.1](https://github.com/Nuraveda/qed-proof-js/releases/tag/sdk-js-v0.4.1) - 2026-10-08: an anchor of a smaller tree no longer covers a receipt appended after it (sdk, cli)
 - [sdk-js-v0.4.0](https://github.com/Nuraveda/qed-proof-js/releases/tag/sdk-js-v0.4.0) - 2026-10-04: trust level 3 — offline AWS Nitro attestation checks (sdk), `attestation:` line in `qed verify` (cli)
 - [sdk-js-v0.3.0](https://github.com/Nuraveda/qed-proof-js/releases/tag/sdk-js-v0.3.0) - 2026-10-04: public Merkle log client and verification (sdk), `qed log head` and `qed verify --head` (cli)
 - [sdk-js-v0.2.0](https://github.com/Nuraveda/qed-proof-js/releases/tag/sdk-js-v0.2.0) - 2026-10-01: change entries and pipeline policy checks
